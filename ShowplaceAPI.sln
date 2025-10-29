@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35327.3
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShowplaceAPI", "ShowplaceAPI\ShowplaceAPI.csproj", "{EAA5A29B-EF4C-4205-BEA1-58202AAB44B8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EAA5A29B-EF4C-4205-BEA1-58202AAB44B8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EAA5A29B-EF4C-4205-BEA1-58202AAB44B8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EAA5A29B-EF4C-4205-BEA1-58202AAB44B8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EAA5A29B-EF4C-4205-BEA1-58202AAB44B8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E4575E4B-48AD-4683-BE10-43FE26E86592}
+	EndGlobalSection
+EndGlobal
