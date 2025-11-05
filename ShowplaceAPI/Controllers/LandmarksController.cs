@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShowplaceAPI.Models;
 using ShowplaceAPI.Models.DTOModles;
+using ShowplaceAPI.Repositories.Interfaces;
 
 namespace ShowplaceAPI.Controllers
 {
@@ -10,61 +11,55 @@ namespace ShowplaceAPI.Controllers
     [ApiController]
     public class LandmarksController : ControllerBase
     {
-        private readonly AppDbContext _context;
+        private readonly ILandmarkRepository _landmarkRepository;
 
-        public LandmarksController(AppDbContext context)
+        public LandmarksController(ILandmarkRepository landmarkRepository)
         {
-            _context = context;
+            _landmarkRepository = landmarkRepository;
         }
 
         // GET: api/Landmarks
         [HttpGet]
         public async Task<ActionResult<IEnumerable<LandmarkDTO>>> GetLandmarks()
         {
-            var landmarks = await _context.Landmarks
-                .Include(l => l.Reviews)
-                .Select(l => new LandmarkDTO
-                {
-                    Id = l.Id,
-                    Name = l.Name,
-                    Description = l.Description,
-                    Location = l.Location,
-                    ImageUrl = l.ImageUrl,
-                    CreatedDate = l.CreatedDate,
-                    ReviewsCount = l.Reviews.Count,
-                    AverageRating = l.Reviews.Any() ? l.Reviews.Average(r => r.Rating) : null
-                })
-                .ToListAsync();
+            var landmarks = await _landmarkRepository.GetLandmarksWithReviewsAsync();
+            var landMarkDTOs = landmarks.Select(l => new LandmarkDTO
+            {
+                Id = l.Id,
+                Name = l.Name,
+                Description = l.Description,
+                Location = l.Location,
+                ImageUrl = l.ImageUrl,
+                CreatedDate = l.CreatedDate,
+                ReviewsCount = l.Reviews.Count,
+                AverageRating = l.Reviews.Any() ? l.Reviews.Average(r => r.Rating) : null
 
-            return landmarks;
+            });
+
+            return Ok(landMarkDTOs);
         }
 
         // GET: api/Landmarks/5
         [HttpGet("{id}")]
         public async Task<ActionResult<LandmarkDTO>> GetLandmark(int id)
         {
-            var landmark = await _context.Landmarks
-                .Include(l => l.Reviews)
-                .Where(l => l.Id == id)
-                .Select(l => new LandmarkDTO
-                {
-                    Id = l.Id,
-                    Name = l.Name,
-                    Description = l.Description,
-                    Location = l.Location,
-                    ImageUrl = l.ImageUrl,
-                    CreatedDate = l.CreatedDate,
-                    ReviewsCount = l.Reviews.Count,
-                    AverageRating = l.Reviews.Any() ? l.Reviews.Average(r => r.Rating) : null
-                })
-                .FirstOrDefaultAsync();
+            var landmark = await _landmarkRepository.GetLandmarkWithReviewsAsync(id);
+            if (landmark == null) NotFound();
 
-            if (landmark == null)
+            var landmarkDTO = new LandmarkDTO
             {
-                return NotFound();
-            }
+                Id = landmark.Id,
+                Name = landmark.Name,
+                Description = landmark.Description,
+                Location = landmark.Location,
+                ImageUrl = landmark.ImageUrl,
+                CreatedDate = landmark.CreatedDate,
+                ReviewsCount = landmark.Reviews.Count,
+                AverageRating = landmark.Reviews.Any() ? landmark.Reviews.Average(r => r.Rating) : null
+            };
+                
 
-            return landmark;
+            return landmarkDTO;
         }
 
         // POST: api/Landmarks
@@ -102,11 +97,8 @@ namespace ShowplaceAPI.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> PutLandmark(int id, UpdateLandmarkDTO updateLandmarkDto)
         {
-            var landmark = await _context.Landmarks.FindAsync(id);
-            if (landmark == null)
-            {
-                return NotFound();
-            }
+            var landmark = await _landmarkRepository.GetLandmarkWithReviewsAsync(id);
+            if (landmark == null) NotFound();
 
             landmark.Name = updateLandmarkDto.Name;
             landmark.Description = updateLandmarkDto.Description;
@@ -115,7 +107,7 @@ namespace ShowplaceAPI.Controllers
 
             try
             {
-                await _context.SaveChangesAsync();
+                
             }
             catch (DbUpdateConcurrencyException)
             {

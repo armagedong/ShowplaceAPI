@@ -4,6 +4,8 @@ using ShowplaceAPI.Models;
 using System.Reflection;
 using System.Text;
 using Npgsql;
+using ShowplaceAPI.Repositories.Interfaces;
+using ShowplaceAPI.Repositories;
 
 namespace ShowplaceAPI
 {
@@ -67,6 +69,11 @@ namespace ShowplaceAPI
             builder.Services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(builder.Configuration.GetConnectionString("PostgreConnection")));
 
+            //Add repozitories
+            builder.Services.AddScoped<ILandmarkRepository, LandmarkRepository>();
+            builder.Services.AddScoped<IReviewRepository, ReviewRepository>();
+            builder.Services.AddScoped<IUserRepository, UserRepository>();
+
             // Add CORS
             builder.Services.AddCors(options =>
             {
@@ -90,7 +97,6 @@ namespace ShowplaceAPI
 
             }
 
-            // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
