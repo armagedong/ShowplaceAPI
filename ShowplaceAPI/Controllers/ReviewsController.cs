@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShowplaceAPI.Models;
 using ShowplaceAPI.Models.DTOModles;
+using ShowplaceAPI.Repositories.Interfaces;
 
 namespace ShowplaceAPI.Controllers
 {
@@ -10,63 +11,81 @@ namespace ShowplaceAPI.Controllers
     [ApiController]
     public class ReviewsController : ControllerBase
     {
-        private readonly AppDbContext _context;
+        private readonly IReviewRepository _reviewRepository; 
+        private readonly IUserRepository _userRepository;
+        private readonly ILandmarkRepository _landmarkRepository;
 
-        public ReviewsController(AppDbContext context)
+        public ReviewsController(IReviewRepository reviewRepository, IUserRepository userRepository, ILandmarkRepository landmarkRepository)
         {
-            _context = context;
+            _reviewRepository = reviewRepository;
+            _userRepository = userRepository;
+            _landmarkRepository = landmarkRepository;
         }
 
         // GET: api/Reviews
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ReviewDTO>>> GetReviews()
-        {
-            var reviews = await _context.Reviews
-            .Include(r => r.Landmark)
-                .Select(r => new ReviewDTO
-                {
-                    Id = r.Id,
-                    Title = r.Title,
-                    Content = r.Content,
-                    Rating = r.Rating,
-                    CreatedDate = r.CreatedDate,
-                    Author = r.Author,
-                    AuthorEmail = r.AuthorEmail,
-                    LandmarkId = r.LandmarkId,
-                    LandmarkName = r.Landmark.Name
-                })
-                .ToListAsync();
+        { 
+            var reviews = await _reviewRepository.GetAllAsync();
 
-            return reviews;
+            var reviewsDTOs = reviews.Select(r => new ReviewDTO
+            {
+                Id = r.Id,
+                Title = r.Title,
+                Content = r.Content,
+                Rating = r.Rating,
+                CreatedDate = r.CreatedDate,
+                Author = r.Author,
+                AuthorEmail = r.AuthorEmail,
+                LandmarkId = r.LandmarkId,
+                LandmarkName = r.Landmark.Name,
+            });
+            return Ok(reviewsDTOs);
         }
 
         // GET: api/Reviews/5
         [HttpGet("{id}")]
         public async Task<ActionResult<ReviewDTO>> GetReview(int id)
         {
-            var review = await _context.Reviews
-                .Include(r => r.Landmark)
-            .Where(r => r.Id == id)
-                .Select(r => new ReviewDTO
-                {
-                    Id = r.Id,
-                    Title = r.Title,
-                    Content = r.Content,
-                    Rating = r.Rating,
-                    CreatedDate = r.CreatedDate,
-                    Author = r.Author,
-                    AuthorEmail = r.AuthorEmail,
-                    LandmarkId = r.LandmarkId,
-                    LandmarkName = r.Landmark.Name
-                })
-                .FirstOrDefaultAsync();
+            //var review = await _context.Reviews
+            //    .Include(r => r.Landmark)
+            //.Where(r => r.Id == id)
+            //    .Select(r => new ReviewDTO
+            //    {
+            //        Id = r.Id,
+            //        Title = r.Title,
+            //        Content = r.Content,
+            //        Rating = r.Rating,
+            //        CreatedDate = r.CreatedDate,
+            //        Author = r.Author,
+            //        AuthorEmail = r.AuthorEmail,
+            //        LandmarkId = r.LandmarkId,
+            //        LandmarkName = r.Landmark.Name
+            //    })
+            //    .FirstOrDefaultAsync();
 
-            if (review == null)
+            //if (review == null)
+            //{
+            //    return NotFound();
+            //}
+
+            //return review;
+
+            var review = await _reviewRepository.GetByIdAsync(id);
+            if (review == null) NotFound();
+
+            var reviewDTO = new ReviewDTO
             {
-                return NotFound();
-            }
-
-            return review;
+                Id = review.Id,
+                Title = review.Title,
+                Content = review.Content,
+                Rating = review.Rating,
+                CreatedDate = review.CreatedDate,
+                Author = review.Author,
+                AuthorEmail = review.AuthorEmail,
+                LandmarkId = review.LandmarkId,
+                LandmarkName = review.Landmark.Name,
+            };
         }
 
         // POST: api/Reviews
@@ -74,7 +93,7 @@ namespace ShowplaceAPI.Controllers
         public async Task<ActionResult<ReviewDTO>> PostReview(CreateReviewDto createReviewDto)
         {
             // Проверяем существование достопримечательности
-            var landmark = await _context.Landmarks.FindAsync(createReviewDto.LandmarkId);
+            var landmark = await _landmarkRepository.GetLandmarkWithReviewsAsync(createReviewDto.LandmarkId);
             if (landmark == null)
             {
                 return BadRequest("Landmark not found");
@@ -94,8 +113,7 @@ namespace ShowplaceAPI.Controllers
                 Author = createReviewDto.Author,
                 AuthorEmail = createReviewDto.AuthorEmail,
                 LandmarkId = createReviewDto.LandmarkId,
-                CreatedDate = DateTime.UtcNow
-            };
+             };
 
             _context.Reviews.Add(review);
             await _context.SaveChangesAsync();

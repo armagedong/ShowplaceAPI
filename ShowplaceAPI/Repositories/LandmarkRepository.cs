@@ -8,11 +8,8 @@ namespace ShowplaceAPI.Repositories
     public class LandmarkRepository : ILandmarkRepository
     {
         private readonly AppDbContext _context;
-
-        public LandmarkRepository(AppDbContext context)
-        {
-            _context = context;
-        }
+        public LandmarkRepository(AppDbContext context) =>  _context = context;
+        
 
 #pragma warning disable CS8603 // Возможно, возврат ссылки, допускающей значение NULL.
         public async Task<Landmark> GetByIdAsync(int id) => await _context.Landmarks.FindAsync(id);
@@ -69,9 +66,9 @@ namespace ShowplaceAPI.Repositories
         public async Task<IEnumerable<Landmark>> SearchLandmarksAsync(string searchTerm)
         {
             return await _context.Landmarks
-                .Where(l => l.Name.ToLower().Contains(searchTerm.ToLower()) ||
-                           l.Description.ToLower().Contains(searchTerm.ToLower()) ||
-                           l.Location.ToLower().Contains(searchTerm.ToLower()))
+                .Where(l => l.Name.Contains(searchTerm, StringComparison.CurrentCultureIgnoreCase) ||
+                           l.Description.Contains(searchTerm, StringComparison.CurrentCultureIgnoreCase) ||
+                           l.Location.Contains(searchTerm, StringComparison.CurrentCultureIgnoreCase))
                 .Include(l => l.Reviews)
                 .ToListAsync();
         }

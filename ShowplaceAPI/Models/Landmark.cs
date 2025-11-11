@@ -10,7 +10,6 @@ namespace ShowplaceAPI.Models
         public string Location { get; set; } = string.Empty;
         public string? ImageUrl { get; set; }
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
-
         public ICollection<Review> Reviews { get; set; } = new List<Review>();
     }
 }
