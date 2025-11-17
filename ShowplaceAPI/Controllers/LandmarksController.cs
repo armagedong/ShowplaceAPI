@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using AutoMapper;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShowplaceAPI.Models;
@@ -9,35 +10,33 @@ namespace ShowplaceAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class LandmarksController : ControllerBase
+    public class LandmarksController(ILandmarkRepository landmarkRepository,
+        IReviewRepository reviewRepository, IMapper mapper) : ControllerBase
     {
-        private readonly ILandmarkRepository _landmarkRepository;
-        private readonly IReviewRepository _reviewRepository; // Добавим для работы с отзывами
-
-        public LandmarksController(ILandmarkRepository landmarkRepository, IReviewRepository reviewRepository)
-        {
-            _landmarkRepository = landmarkRepository;
-            _reviewRepository = reviewRepository;  
-        }
+        private readonly ILandmarkRepository _landmarkRepository = landmarkRepository;
+        private readonly IReviewRepository _reviewRepository = reviewRepository;
+        private readonly IMapper _mapper = mapper;
 
         // GET: api/Landmarks
         [HttpGet]
         public async Task<ActionResult<IEnumerable<LandmarkDTO>>> GetLandmarks()
         {
-            var landmarks = await _landmarkRepository.GetLandmarksWithReviewsAsync();
-            var landMarkDTOs = landmarks.Select(l => new LandmarkDTO
+            try
             {
-                Id = l.Id,
-                Name = l.Name,
-                Description = l.Description,
-                Location = l.Location,
-                ImageUrl = l.ImageUrl,
-                CreatedDate = l.CreatedDate,
-                ReviewsCount = l.Reviews.Count,
-                AverageRating = l.Reviews.Any() ? l.Reviews.Average(r => r.Rating) : null
-            });
-
-            return Ok(landMarkDTOs);
+                var landmarks = await _landmarkRepository.GetLandmarksWithReviewsAsync();
+                var landmarkDTOs = _mapper.Map<IEnumerable<LandmarkDTO>>(landmarks);
+                return Ok(landmarkDTOs);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new ProblemDetails
+                {
+                    Title = "Internal Server Error",
+                    Status = 500,
+                    Detail = "Error retrieving landmarks from database",
+                    Instance = HttpContext.Request.Path
+                });
+            }
         }
 
         // GET: api/Landmarks/5
@@ -45,85 +44,84 @@ namespace ShowplaceAPI.Controllers
         public async Task<ActionResult<LandmarkDTO>> GetLandmark(int id)
         {
             var landmark = await _landmarkRepository.GetLandmarkWithReviewsAsync(id);
-            if (landmark == null) 
+            if (landmark == null)
             {
-                return NotFound(); // Добавлен return
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"Landmark with ID {id} not found.",
+                    Instance = $"/api/landmarks/{id}"
+                });
             }
 
-            var landmarkDTO = new LandmarkDTO
-            {
-                Id = landmark.Id,
-                Name = landmark.Name,
-                Description = landmark.Description,
-                Location = landmark.Location,
-                ImageUrl = landmark.ImageUrl,
-                CreatedDate = landmark.CreatedDate,
-                ReviewsCount = landmark.Reviews.Count,
-                AverageRating = landmark.Reviews.Any() ? landmark.Reviews.Average(r => r.Rating) : null
-            };
-
-            return landmarkDTO;
+            var landmarkDTO = _mapper.Map<LandmarkDTO>(landmark);
+            return Ok(landmarkDTO);
         }
 
         // POST: api/Landmarks
         [HttpPost]
         public async Task<ActionResult<LandmarkDTO>> PostLandmark(CreateLandmarkDto createLandmarkDto)
         {
-            var landmark = new Landmark
+            if (!ModelState.IsValid)
             {
-                Name = createLandmarkDto.Name,
-                Description = createLandmarkDto.Description,
-                Location = createLandmarkDto.Location,
-                ImageUrl = createLandmarkDto.ImageUrl
-                // CreatedDate устанавливается в репозитории
-            };
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "Validation errors occurred",
+                    Instance = HttpContext.Request.Path,
+                    Extensions = { ["errors"] = ModelState.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                    )}
+                });
+            }
 
-            var createdLandmark = await _landmarkRepository.AddAsync(landmark); // Используем репозиторий
+            var landmark = _mapper.Map<Landmark>(createLandmarkDto);
+            var createdLandmark = await _landmarkRepository.AddAsync(landmark);
+            var landmarkDTO = _mapper.Map<LandmarkDTO>(createdLandmark);
 
-            var landmarkDto = new LandmarkDTO
-            {
-                Id = createdLandmark.Id,
-                Name = createdLandmark.Name,
-                Description = createdLandmark.Description,
-                Location = createdLandmark.Location,
-                ImageUrl = createdLandmark.ImageUrl,
-                CreatedDate = createdLandmark.CreatedDate,
-                ReviewsCount = 0,
-                AverageRating = null
-            };
-
-            return CreatedAtAction("GetLandmark", new { id = landmarkDto.Id }, landmarkDto);
+            return CreatedAtAction("GetLandmark", new { id = landmarkDTO.Id }, landmarkDTO);
         }
 
         // PUT: api/Landmarks/5
         [HttpPut("{id}")]
         public async Task<IActionResult> PutLandmark(int id, UpdateLandmarkDTO updateLandmarkDto)
         {
-            var landmark = await _landmarkRepository.GetByIdAsync(id); // Используем репозиторий
-            if (landmark == null) 
+            if (id != updateLandmarkDto.Id)
             {
-                return NotFound(); // Добавлен return
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "ID in URL does not match ID in body.",
+                    Instance = HttpContext.Request.Path
+                });
             }
 
-            landmark.Name = updateLandmarkDto.Name;
-            landmark.Description = updateLandmarkDto.Description;
-            landmark.Location = updateLandmarkDto.Location;
-            landmark.ImageUrl = updateLandmarkDto.ImageUrl;
+            var landmark = await _landmarkRepository.GetByIdAsync(id);
+            if (landmark == null)
+            {
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"Landmark with ID {id} not found.",
+                    Instance = $"/api/landmarks/{id}"
+                });
+            }
+
+            _mapper.Map(updateLandmarkDto, landmark);
 
             try
             {
-                await _landmarkRepository.UpdateAsync(landmark); // Используем репозиторий
+                await _landmarkRepository.UpdateAsync(landmark);
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!await LandmarkExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
+                if (!await LandmarkExists(id)) return NotFound();
+                else throw;
             }
 
             return NoContent();
@@ -133,13 +131,19 @@ namespace ShowplaceAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteLandmark(int id)
         {
-            var landmark = await _landmarkRepository.GetByIdAsync(id); // Используем репозиторий
+            var landmark = await _landmarkRepository.GetByIdAsync(id);
             if (landmark == null)
             {
-                return NotFound();
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"Landmark with ID {id} not found.",
+                    Instance = $"/api/landmarks/{id}"
+                });
             }
 
-            await _landmarkRepository.DeleteAsync(id); // Используем репозиторий
+            await _landmarkRepository.DeleteAsync(id);
 
             return NoContent();
         }
@@ -148,75 +152,162 @@ namespace ShowplaceAPI.Controllers
         [HttpGet("{id}/reviews")]
         public async Task<ActionResult<IEnumerable<ReviewDTO>>> GetLandmarkReviews(int id)
         {
-            // Проверяем существование достопримечательности
             if (!await _landmarkRepository.ExistsAsync(id))
             {
-                return NotFound();
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"Landmark with ID {id} not found.",
+                    Instance = $"/api/landmarks/{id}/reviews"
+                });
             }
 
-            var reviews = await _reviewRepository.GetReviewsByLandmarkAsync(id); // Используем репозиторий
+            var reviews = await _reviewRepository.GetReviewsByLandmarkAsync(id);
+            var reviewDTOs = _mapper.Map<IEnumerable<ReviewDTO>>(reviews);
 
-            var reviewDtos = reviews.Select(r => new ReviewDTO
-            {
-                Id = r.Id,
-                Title = r.Title,
-                Content = r.Content,
-                Rating = r.Rating,
-                CreatedDate = r.CreatedDate,
-                Author = r.Author,
-                AuthorEmail = r.AuthorEmail,
-                LandmarkId = r.LandmarkId,
-                LandmarkName = r.Landmark?.Name ?? "Unknown" // Безопасное обращение
-            });
-
-            return Ok(reviewDtos);
+            return Ok(reviewDTOs);
         }
-
         // GET: api/Landmarks/search?name=это
         [HttpGet("search")]
         public async Task<ActionResult<IEnumerable<LandmarkDTO>>> SearchLandmarks([FromQuery] string name)
         {
-            var landmarks = await _landmarkRepository.SearchLandmarksAsync(name); // Используем репозиторий
-
-            var landmarkDtos = landmarks.Select(l => new LandmarkDTO
+            if (string.IsNullOrWhiteSpace(name) || name == "")
             {
-                Id = l.Id,
-                Name = l.Name,
-                Description = l.Description,
-                Location = l.Location,
-                ImageUrl = l.ImageUrl,
-                CreatedDate = l.CreatedDate,
-                ReviewsCount = l.Reviews.Count,
-                AverageRating = l.Reviews.Any() ? l.Reviews.Average(r => r.Rating) : null
-            });
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "Search term cannot be empty.",
+                    Instance = HttpContext.Request.Path
+                });
+            }
 
-            return Ok(landmarkDtos);
+            try
+            {
+                var landmarks = await _landmarkRepository.SearchLandmarksAsync(name);
+                var landmarkDTOs = _mapper.Map<IEnumerable<LandmarkDTO>>(landmarks);
+
+                return Ok(landmarkDTOs);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new ProblemDetails
+                {
+                    Title = "Internal Server Error",
+                    Status = 500,
+                    Detail = "Error searching landmarks",
+                    Instance = HttpContext.Request.Path
+                });
+            }
         }
 
         // GET: api/Landmarks/top-rated
         [HttpGet("top-rated")]
         public async Task<ActionResult<IEnumerable<LandmarkDTO>>> GetTopRatedLandmarks()
         {
-            var landmarks = await _landmarkRepository.GetTopRatedLandmarksAsync(10); // Используем репозиторий
+            var landmarks = await _landmarkRepository.GetTopRatedLandmarksAsync(10);
+            var landmarkDTOs = _mapper.Map<IEnumerable<LandmarkDTO>>(landmarks);
 
-            var landmarkDtos = landmarks.Select(l => new LandmarkDTO
-            {
-                Id = l.Id,
-                Name = l.Name,
-                Description = l.Description,
-                Location = l.Location,
-                ImageUrl = l.ImageUrl,
-                CreatedDate = l.CreatedDate,
-                ReviewsCount = l.Reviews.Count,
-                AverageRating = l.Reviews.Any() ? l.Reviews.Average(r => r.Rating) : null
-            });
-
-            return Ok(landmarkDtos);
+            return Ok(landmarkDTOs);
         }
 
-        private async Task<bool> LandmarkExists(int id) // Сделали метод асинхронным
+        // GET: api/Landmarks/most-reviewed
+        [HttpGet("most-reviewed")]
+        public async Task<ActionResult<IEnumerable<LandmarkDTO>>> GetMostReviewedLandmarks()
         {
-            return await _landmarkRepository.ExistsAsync(id); // Используем репозиторий
+            try
+            {
+                var landmarks = await _landmarkRepository.GetLandmarksWithReviewsAsync();
+                var mostReviewedLandmarks = landmarks
+                    .Where(l => l.Reviews.Any())
+                    .OrderByDescending(l => l.Reviews.Count)
+                    .Take(10)
+                    .ToList();
+
+                var landmarkDTOs = _mapper.Map<IEnumerable<LandmarkDTO>>(mostReviewedLandmarks);
+                return Ok(landmarkDTOs);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new ProblemDetails
+                {
+                    Title = "Internal Server Error",
+                    Status = 500,
+                    Detail = "Error retrieving most reviewed landmarks",
+                    Instance = HttpContext.Request.Path
+                });
+            }
+        }
+
+        // GET: api/Landmarks/recent
+        [HttpGet("recent")]
+        public async Task<ActionResult<IEnumerable<LandmarkDTO>>> GetRecentLandmarks()
+        {
+            try
+            {
+                var landmarks = await _landmarkRepository.GetLandmarksWithReviewsAsync();
+                var recentLandmarks = landmarks
+                    .OrderByDescending(l => l.CreatedDate)
+                    .Take(10)
+                    .ToList();
+
+                var landmarkDTOs = _mapper.Map<IEnumerable<LandmarkDTO>>(recentLandmarks);
+                return Ok(landmarkDTOs);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new ProblemDetails
+                {
+                    Title = "Internal Server Error",
+                    Status = 500,
+                    Detail = "Error retrieving recent landmarks",
+                    Instance = HttpContext.Request.Path
+                });
+            }
+        }
+
+        // GET: api/Landmarks/statistics
+        [HttpGet("statistics")]
+        public async Task<ActionResult<object>> GetStatistics()
+        {
+            try
+            {
+                var totalLandmarks = await _landmarkRepository.CountAsync();
+                var landmarksWithReviews = await _landmarkRepository.FindAsync(l => l.Reviews.Any());
+                var totalReviews = landmarksWithReviews.Sum(l => l.Reviews.Count);
+                var averageRating = landmarksWithReviews.Any()
+                    ? landmarksWithReviews.Average(l => l.Reviews.Average(r => r.Rating))
+                    : 0;
+
+                var statistics = new
+                {
+                    TotalLandmarks = totalLandmarks,
+                    LandmarksWithReviews = landmarksWithReviews.Count(),
+                    TotalReviews = totalReviews,
+                    AverageRating = Math.Round(averageRating, 2),
+                    MostReviewedLandmark = landmarksWithReviews
+                        .OrderByDescending(l => l.Reviews.Count)
+                        .FirstOrDefault()?.Name ?? "No reviews yet"
+                };
+
+                return Ok(statistics);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new ProblemDetails
+                {
+                    Title = "Internal Server Error",
+                    Status = 500,
+                    Detail = "Error retrieving statistics",
+                    Instance = HttpContext.Request.Path
+                });
+            }
+        }
+
+        private async Task<bool> LandmarkExists(int id)
+        {
+            return await _landmarkRepository.ExistsAsync(id);
         }
     }
 }

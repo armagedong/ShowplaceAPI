@@ -18,6 +18,7 @@ namespace ShowplaceAPI
             // Add services to the container.
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddAutoMapper(typeof(Program));
 
             // Configure Swagger
             builder.Services.AddSwaggerGen(options =>
@@ -26,11 +27,12 @@ namespace ShowplaceAPI
                 {
                     Version = "v1",
                     Title = "Landmark Review System API",
-                    Description = "API для системы отзывов о достопримечательностях",
+                    Description = "API для системы отзывов о достопримечательностях",   
                     Contact = new OpenApiContact
                     {
-                        Name = "Development Team",
-                        Email = "dev@example.com"
+                        Name = "Кантурлеев Арман",
+                        Email = "armankantuleev6551@gmail.com",
+                        
                     },
                     License = new OpenApiLicense
                     {

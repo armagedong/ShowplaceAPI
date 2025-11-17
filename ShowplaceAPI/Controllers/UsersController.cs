@@ -1,134 +1,162 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using AutoMapper;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShowplaceAPI.Models;
 using ShowplaceAPI.Models.DTOModles;
+using ShowplaceAPI.Repositories.Interfaces;
 
 namespace ShowplaceAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class UsersController : ControllerBase
+    public class UsersController(IUserRepository userRepository, 
+        IMapper mapper) : ControllerBase
     {
-        private readonly AppDbContext _context;
-
-        public UsersController(AppDbContext context)
-        {
-            _context = context;
-        }
+        private readonly IUserRepository _userRepository = userRepository;
+        private readonly IMapper _mapper = mapper;
 
         // GET: api/Users
         [HttpGet]
         public async Task<ActionResult<IEnumerable<UserDTO>>> GetUsers()
         {
-            var users = await _context.Users
-            .Include(u => u.Reviews)
-                .Select(u => new UserDTO
-                {
-                    Id = u.Id,
-                    Username = u.Username,
-                    Email = u.Email,
-                    CreatedDate = u.CreatedDate,
-                    ReviewsCount = u.Reviews.Count
-                })
-                .ToListAsync();
-
-            return users;
+            var users = await _userRepository.GetUsersWithReviewsAsync();
+            var userDTOs = _mapper.Map<IEnumerable<UserDTO>>(users);
+            return Ok(userDTOs);
         }
 
         // GET: api/Users/5
         [HttpGet("{id}")]
         public async Task<ActionResult<UserDTO>> GetUser(int id)
         {
-            var user = await _context.Users
-                .Include(u => u.Reviews)
-            .Where(u => u.Id == id)
-                .Select(u => new UserDTO
-                {
-                    Id = u.Id,
-                    Username = u.Username,
-                    Email = u.Email,
-                    CreatedDate = u.CreatedDate,
-                    ReviewsCount = u.Reviews.Count
-                })
-                .FirstOrDefaultAsync();
-
+            var user = await _userRepository.GetByIdAsync(id);
             if (user == null)
             {
-                return NotFound();
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"User with ID {id} not found.",
+                    Instance = $"/api/users/{id}"
+                });
             }
 
-            return user;
+            var userDTO = _mapper.Map<UserDTO>(user);
+            return userDTO;
         }
 
         // POST: api/Users
         [HttpPost]
         public async Task<ActionResult<UserDTO>> PostUser(CreateUserDTO createUserDto)
         {
-            // Проверяем уникальность email и username
-            if (await _context.Users.AnyAsync(u => u.Email == createUserDto.Email))
+            if (!ModelState.IsValid)
             {
-                return BadRequest("User with this email already exists");
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "Validation errors occurred",
+                    Instance = HttpContext.Request.Path,
+                    Extensions = { ["errors"] = ModelState.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                    )}
+                });
             }
 
-            if (await _context.Users.AnyAsync(u => u.Username == createUserDto.Username))
+            // Проверяем уникальность email
+            if (await _userRepository.EmailExistsAsync(createUserDto.Email))
             {
-                return BadRequest("User with this username already exists");
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "User with this email already exists.",
+                    Instance = HttpContext.Request.Path
+                });
             }
 
-            var user = new User
+            // Проверяем уникальность username
+            if (await _userRepository.UsernameExistsAsync(createUserDto.Username))
             {
-                Username = createUserDto.Username,
-                Email = createUserDto.Email,
-                CreatedDate = DateTime.UtcNow
-            };
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "User with this username already exists.",
+                    Instance = HttpContext.Request.Path
+                });
+            }
 
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+            var user = _mapper.Map<User>(createUserDto);
+            var createdUser = await _userRepository.AddAsync(user);
+            var userDTO = _mapper.Map<UserDTO>(createdUser);
 
-            var userDto = new UserDTO
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                CreatedDate = user.CreatedDate,
-                ReviewsCount = 0
-            };
-
-            return CreatedAtAction("GetUser", new { id = user.Id }, userDto);
+            return CreatedAtAction("GetUser", new { id = userDTO.Id }, userDTO);
         }
 
         // PUT: api/Users/5
         [HttpPut("{id}")]
         public async Task<IActionResult> PutUser(int id, UpdateUserDTO updateUserDto)
         {
-            var user = await _context.Users.FindAsync(id);
+            if (id != updateUserDto.Id)
+            {
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "ID in URL does not match ID in body.",
+                    Instance = HttpContext.Request.Path
+                });
+            }
+
+            var user = await _userRepository.GetByIdAsync(id);
             if (user == null)
             {
-                return NotFound();
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"User with ID {id} not found.",
+                    Instance = $"/api/users/{id}"
+                });
             }
 
-            // Проверяем уникальность email и username (исключая текущего пользователя)
-            if (await _context.Users.AnyAsync(u => u.Email == updateUserDto.Email && u.Id != id))
+            // Проверяем уникальность email (исключая текущего пользователя)
+            if (await _userRepository.EmailExistsAsync(updateUserDto.Email) &&
+                (await _userRepository.GetUserByEmailAsync(updateUserDto.Email))?.Id != id)
             {
-                return BadRequest("User with this email already exists");
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "User with this email already exists.",
+                    Instance = HttpContext.Request.Path
+                });
             }
 
-            if (await _context.Users.AnyAsync(u => u.Username == updateUserDto.Username && u.Id != id))
+            // Проверяем уникальность username (исключая текущего пользователя)
+            if (await _userRepository.UsernameExistsAsync(updateUserDto.Username) &&
+                (await _userRepository.GetUserByUsernameAsync(updateUserDto.Username))?.Id != id)
             {
-                return BadRequest("User with this username already exists");
+                return BadRequest(new ProblemDetails
+                {
+                    Title = "Bad Request",
+                    Status = 400,
+                    Detail = "User with this username already exists.",
+                    Instance = HttpContext.Request.Path
+                });
             }
 
-            user.Username = updateUserDto.Username;
-            user.Email = updateUserDto.Email;
+            _mapper.Map(updateUserDto, user);
 
             try
             {
-                await _context.SaveChangesAsync();
+                await _userRepository.UpdateAsync(user);
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!UserExists(id))
+                if (!await UserExists(id))
                 {
                     return NotFound();
                 }
@@ -145,14 +173,19 @@ namespace ShowplaceAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(int id)
         {
-            var user = await _context.Users.FindAsync(id);
+            var user = await _userRepository.GetByIdAsync(id);
             if (user == null)
             {
-                return NotFound();
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"User with ID {id} not found.",
+                    Instance = $"/api/users/{id}"
+                });
             }
 
-            _context.Users.Remove(user);
-            await _context.SaveChangesAsync();
+            await _userRepository.DeleteAsync(id);
 
             return NoContent();
         }
@@ -161,60 +194,67 @@ namespace ShowplaceAPI.Controllers
         [HttpGet("{id}/reviews")]
         public async Task<ActionResult<IEnumerable<ReviewDTO>>> GetUserReviews(int id)
         {
-            var user = await _context.Users
-                .Include(u => u.Reviews)
-                .ThenInclude(r => r.Landmark)
-                .FirstOrDefaultAsync(u => u.Id == id);
-
+            var user = await _userRepository.GetByIdAsync(id);
             if (user == null)
             {
-                return NotFound();
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"User with ID {id} not found.",
+                    Instance = $"/api/users/{id}/reviews"
+                });
             }
 
-            var reviewDtos = user.Reviews.Select(r => new ReviewDTO
-            {
-                Id = r.Id,
-                Title = r.Title,
-                Content = r.Content,
-                Rating = r.Rating,
-                CreatedDate = r.CreatedDate,
-                Author = r.Author,
-                AuthorEmail = r.AuthorEmail,
-                LandmarkId = r.LandmarkId,
-                LandmarkName = r.Landmark.Name
-            });
+            var reviews = user.Reviews;
+            var reviewDTOs = _mapper.Map<IEnumerable<ReviewDTO>>(reviews);
 
-            return Ok(reviewDtos);
+            return Ok(reviewDTOs);
         }
 
         // GET: api/Users/by-email?email=test@example.com
         [HttpGet("by-email")]
         public async Task<ActionResult<UserDTO>> GetUserByEmail([FromQuery] string email)
         {
-            var user = await _context.Users
-                .Include(u => u.Reviews)
-                .Where(u => u.Email == email)
-                .Select(u => new UserDTO
-                {
-                    Id = u.Id,
-                    Username = u.Username,
-                    Email = u.Email,
-                    CreatedDate = u.CreatedDate,
-                    ReviewsCount = u.Reviews.Count
-                })
-                .FirstOrDefaultAsync();
-
+            var user = await _userRepository.GetUserByEmailAsync(email);
             if (user == null)
             {
-                return NotFound();
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"User with email {email} not found.",
+                    Instance = HttpContext.Request.Path
+                });
             }
 
-            return user;
+            var userDTO = _mapper.Map<UserDTO>(user);
+            return userDTO;
         }
 
-        private bool UserExists(int id)
+        // GET: api/Users/by-username?username=testuser
+        [HttpGet("by-username")]
+        public async Task<ActionResult<UserDTO>> GetUserByUsername([FromQuery] string username)
         {
-            return _context.Users.Any(e => e.Id == id);
+            var user = await _userRepository.GetUserByUsernameAsync(username);
+            if (user == null)
+            {
+                return NotFound(new ProblemDetails
+                {
+                    Title = "Not Found",
+                    Status = 404,
+                    Detail = $"User with username {username} not found.",
+                    Instance = HttpContext.Request.Path
+                });
+            }
+
+            var userDTO = _mapper.Map<UserDTO>(user);
+            return userDTO;
+        }
+
+        private async Task<bool> UserExists(int id)
+        {
+            return await _userRepository.ExistsAsync(id);
         }
     }
 }

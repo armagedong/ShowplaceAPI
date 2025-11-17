@@ -65,10 +65,16 @@ namespace ShowplaceAPI.Repositories
 
         public async Task<IEnumerable<Landmark>> SearchLandmarksAsync(string searchTerm)
         {
+            if (string.IsNullOrWhiteSpace(searchTerm))
+                return new List<Landmark>();
+
+            // Приводим к нижнему регистру для регистронезависимого поиска
+            var lowerSearchTerm = searchTerm.ToLower();
+
             return await _context.Landmarks
-                .Where(l => l.Name.Contains(searchTerm, StringComparison.CurrentCultureIgnoreCase) ||
-                           l.Description.Contains(searchTerm, StringComparison.CurrentCultureIgnoreCase) ||
-                           l.Location.Contains(searchTerm, StringComparison.CurrentCultureIgnoreCase))
+                .Where(l => l.Name.ToLower().Contains(lowerSearchTerm) ||
+                           l.Description.ToLower().Contains(lowerSearchTerm) ||
+                           l.Location.ToLower().Contains(lowerSearchTerm))
                 .Include(l => l.Reviews)
                 .ToListAsync();
         }
