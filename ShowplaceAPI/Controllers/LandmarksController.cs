@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ namespace ShowplaceAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize(Roles = "User")]
     public class LandmarksController(ILandmarkRepository landmarkRepository,
         IReviewRepository reviewRepository, IMapper mapper) : ControllerBase
     {
@@ -19,6 +21,8 @@ namespace ShowplaceAPI.Controllers
 
         // GET: api/Landmarks
         [HttpGet]
+        [Authorize(Roles ="User")]
+        //[AllowAnonymous]
         public async Task<ActionResult<IEnumerable<LandmarkDTO>>> GetLandmarks()
         {
             try
